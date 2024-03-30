@@ -12,7 +12,7 @@ K4nundrum uses letters as separators to split K4 into groups of text segments an
 
 ![K4 groups](./K4_groups.png "K4 groups")
 
-These findings are detailed in this blog post: *A Fresh Perspective on Kryptos K4, the Decades-Old Unsolved Code*.
+These findings are detailed in this blog post: *[A Fresh Perspective on Kryptos K4, the Decades-Old Unsolved Code](https://guyomel.hashnode.dev/a-fresh-perspective-on-kryptos-k4)*.
 
 Contributions are welcomed (`CONTRIBUTING.md`).
 
