@@ -70,3 +70,16 @@ Groups length > 2         0.57%	      5923/1031972
 Alternating groups        0.07%	       671/1031972
 K4-like groups            0.04%	       458/1031972
 ```
+
+### Analyze Custom Ciphertexts
+
+K4nundrum can also analyze arbitrary ciphertexts, provided that they do not contain non-alphabetic characters:
+
+```
+$ go run ./... --ciphertext {{ciphertext}}
+```
+Example:
+
+```
+$ go run ./... --ciphertext QSWGVHEMUVHMGXLGRYYZRXCQLVXUVFGBELXRGYMESPXFNVQNYVPRK
+```

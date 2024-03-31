@@ -41,3 +41,8 @@ jobs:
     # without any error
     - name: Run K4 Analysis
       run: go run ./...
+
+    # ensure that the custom analysis exits
+    # without any error
+    - name: Run Custom Analysis
+      run: go run ./... --ciphertext QSWGVHEMUVHMGXLGRYYZRXCQLVXUVFGBELXRGYMESPXFNVQNYVPRK

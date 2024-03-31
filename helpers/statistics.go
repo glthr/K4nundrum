@@ -238,3 +238,11 @@ func (s *StatisticsRecorder) Record(ciphertext string, gs []groups.Group) {
 
 	s.saveFile <- struct{}{}
 }
+
+func (s *StatisticsRecorder) GetSameShapesCount() uint {
+	return s.sameDistributionShapesCount
+}
+
+func (s *StatisticsRecorder) GetK4LikeCount() uint {
+	return s.k4LikeGroupsCount
+}

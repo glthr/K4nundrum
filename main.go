@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -43,7 +45,13 @@ func getValidCollections(
 	return validCollections
 }
 
-func runAnalysis(ctx context.Context, job *Job, recorder *helpers.StatisticsRecorder) {
+func runAnalysis(
+	ctx context.Context,
+	mu *sync.Mutex,
+	job *Job,
+	recorder *helpers.StatisticsRecorder,
+) {
+
 	// the separator should be immediately surrounded by nonseparators
 	// (e.g., a ciphertext containing a doublet separator 'XX' should be excluded)
 	for i := 0; i < len(job.ciphertext)-1; i++ {
@@ -66,6 +74,7 @@ func runAnalysis(ctx context.Context, job *Job, recorder *helpers.StatisticsReco
 			// analyze the collections to identify groups with
 			// the same letters frequency shapes
 			for _, collection := range getValidCollections(generator, permutation) {
+				mu.Lock()
 
 				helpers.PrintContext(job.ciphertext, job.separator, job.simulationId)
 				for j, group := range collection.Groups {
@@ -73,6 +82,7 @@ func runAnalysis(ctx context.Context, job *Job, recorder *helpers.StatisticsReco
 				}
 
 				recorder.Record(job.ciphertext, collection.Groups)
+				mu.Unlock()
 			}
 		}
 	}
@@ -82,9 +92,15 @@ func main() {
 	var (
 		wg               sync.WaitGroup
 		simulationsCount uint
+		mu               sync.Mutex
 	)
 
-	sim := flag.Bool("sim", false, "simulation")
+	sim := flag.Bool("sim", false, "simulation mode")
+	customCiphertext := flag.String(
+		"ciphertext",
+		"",
+		"custom analysis of an arbitrary ciphertext",
+	)
 	workersCount := flag.Int(
 		"workers",
 		20,
@@ -112,7 +128,7 @@ func main() {
 					if !ok {
 						return
 					}
-					runAnalysis(ctx, &j, recorder)
+					runAnalysis(ctx, &mu, &j, recorder)
 				case <-ctx.Done():
 					return
 				}
@@ -130,6 +146,8 @@ func main() {
 				ciphertext = helpers.GenerateRandomString(len(k4))
 				simulationsCount++
 				recorder.Update(simulationsCount)
+			} else if *customCiphertext != "" {
+				ciphertext = strings.ToUpper(*customCiphertext)
 			}
 
 			// iterate over separators:
@@ -164,5 +182,8 @@ func main() {
 	)
 
 	<-terminateAnalysis
+	fmt.Println("Analysis Completed.")
+	fmt.Printf("Same shapes:\t%d\n", recorder.GetSameShapesCount())
+	fmt.Printf("K4-like:\t%d\n", recorder.GetK4LikeCount())
 	cancelFunc()
 }
