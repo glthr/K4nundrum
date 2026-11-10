@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/glethuillier/K4nundrum/groups"
+	"github.com/glethuillier/K4nundrum/rectangle"
 )
 
 type StatisticsRecorder struct {
@@ -32,6 +33,24 @@ type StatisticsRecorder struct {
 	// K4-like pseudo-K4s
 	// (same shapes, non tiny, alternating)
 	k4LikeGroupsCount uint
+
+	// pseudo-K4s in which at least one letter forms
+	// a symmetric rectangle (any width)
+	rectangleCount uint
+
+	// ... with at least one rectangle of 5 rows or more
+	rectangleTallCount uint
+
+	// ... with at least one rectangle with a center mark
+	rectangleCenterCount uint
+
+	// ... with at least one rectangle with a center mark
+	// and inset corners (the K4 shape)
+	rectangleInsetCount uint
+
+	// K4-like collections whose separator also
+	// forms a symmetric rectangle
+	k4LikeRectangleCount uint
 }
 
 const filename = "stats.txt"
@@ -161,14 +180,31 @@ func formatStatistics(statsType string, count, totalCount uint) string {
 	)
 }
 
+// formatRareStatistics is formatStatistics with more decimals,
+// for events that are rare
+func formatRareStatistics(statsType string, count, totalCount uint) string {
+	return fmt.Sprintf("%-25s\t%.4f%%\t%10d/%d\n",
+		statsType,
+		float64(count*100)/float64(totalCount),
+		count,
+		totalCount,
+	)
+}
+
+// Save writes the statistics to the file
+// (it is safe to call it from any goroutine)
+func (s *StatisticsRecorder) Save() {
+	s.save()
+}
+
 func (s *StatisticsRecorder) save() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// do not save if the original K4 is analyzed
 	if s.simulationsCount == 0 {
 		return
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
 	if err != nil {
@@ -205,44 +241,156 @@ func (s *StatisticsRecorder) save() {
 		s.simulationsCount,
 	)
 
+	statistics += formatRareStatistics(
+		"Symmetric rectangle",
+		s.rectangleCount,
+		s.simulationsCount,
+	)
+
+	statistics += formatRareStatistics(
+		"Rectangle, 5+ rows",
+		s.rectangleTallCount,
+		s.simulationsCount,
+	)
+
+	statistics += formatRareStatistics(
+		"Rectangle + center",
+		s.rectangleCenterCount,
+		s.simulationsCount,
+	)
+
+	statistics += formatRareStatistics(
+		"Rectangle, inset",
+		s.rectangleInsetCount,
+		s.simulationsCount,
+	)
+
+	statistics += formatRareStatistics(
+		"K4-like + rectangle",
+		s.k4LikeRectangleCount,
+		s.simulationsCount,
+	)
+
 	if _, err = file.WriteString(statistics); err != nil {
 		fmt.Printf("error writing file: %s", err.Error())
 	}
 }
 
 func (s *StatisticsRecorder) Update(simulationsCount uint) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.simulationsCount = simulationsCount
 }
 
-func (s *StatisticsRecorder) Record(ciphertext string, gs []groups.Group) {
-	// same distribution shapes
+// Record records a collection of groups with the same shapes, obtained
+// by splitting the ciphertext with the separator
+func (s *StatisticsRecorder) Record(
+	ciphertext string,
+	separator rune,
+	gs []groups.Group,
+) {
+	// same distribution shapes AND groups > 2
+	segmentsAreAppropriatelySized := segmentsAreAppropriatelySized(gs)
+
+	// same distribution shapes AND alternating groups
+	groupsAlternate := groupsAlternate(ciphertext, gs)
+
+	k4Like := segmentsAreAppropriatelySized && groupsAlternate
+	k4LikeRectangle := k4Like &&
+		len(rectangle.Find(ciphertext, separator)) > 0
+
+	s.mu.Lock()
 	s.sameDistributionShapesCount++
 
-	// same distribution shapes AND groups > 3
-	segmentsAreAppropriatelySized := segmentsAreAppropriatelySized(gs)
 	if segmentsAreAppropriatelySized {
 		s.appropriatelySizedGroupsCount++
 	}
 
-	// same distribution shapes AND alternating groups
-	groupsAlternate := groupsAlternate(ciphertext, gs)
 	if groupsAlternate {
 		s.alternatingGroupsCount++
 	}
 
 	// same distribution shapes AND groups > 2 AND alternates
 	// (K4-like pseudo-K4s)
-	if segmentsAreAppropriatelySized && groupsAlternate {
+	if k4Like {
 		s.k4LikeGroupsCount++
 	}
+
+	if k4LikeRectangle {
+		s.k4LikeRectangleCount++
+	}
+	s.mu.Unlock()
 
 	s.saveFile <- struct{}{}
 }
 
+// RecordRectangles records the symmetric rectangles of a pseudo-K4
+// (all letters are considered; the pseudo-K4 is counted once per metric)
+func (s *StatisticsRecorder) RecordRectangles(ciphertext string) {
+	var anyRectangle, tall, center, inset bool
+
+	// positions of each letter
+	var positions [26][]int
+	for i := 0; i < len(ciphertext); i++ {
+		if l := ciphertext[i]; l >= 'A' && l <= 'Z' {
+			positions[l-'A'] = append(positions[l-'A'], i)
+		}
+	}
+
+	for _, ps := range positions {
+		for _, r := range rectangle.FindInPositions(ps, len(ciphertext)) {
+			anyRectangle = true
+			tall = tall || r.Height >= 5
+			center = center || r.CenterMark
+			inset = inset || (r.InsetCorners && r.CenterMark)
+		}
+	}
+
+	if !anyRectangle {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.rectangleCount++
+	if tall {
+		s.rectangleTallCount++
+	}
+	if center {
+		s.rectangleCenterCount++
+	}
+	if inset {
+		s.rectangleInsetCount++
+	}
+}
+
 func (s *StatisticsRecorder) GetSameShapesCount() uint {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	return s.sameDistributionShapesCount
 }
 
 func (s *StatisticsRecorder) GetK4LikeCount() uint {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	return s.k4LikeGroupsCount
+}
+
+// GetRectangleCounts returns the number of pseudo-K4s with a symmetric
+// rectangle, with a rectangle of 5+ rows, with a rectangle with a center
+// mark, with a rectangle with a center mark and inset corners, and the
+// number of K4-like collections whose separator forms a rectangle
+func (s *StatisticsRecorder) GetRectangleCounts() (rectangles, tall, center, inset, k4Like uint) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.rectangleCount,
+		s.rectangleTallCount,
+		s.rectangleCenterCount,
+		s.rectangleInsetCount,
+		s.k4LikeRectangleCount
 }
