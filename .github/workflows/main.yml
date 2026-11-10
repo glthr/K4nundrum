@@ -46,3 +46,13 @@ jobs:
     # without any error
     - name: Run Custom Analysis
       run: go run ./... --ciphertext QSWGVHEMUVHMGXLGRYYZRXCQLVXUVFGBELXRGYMESPXFNVQNYVPRK
+
+    # ensure that the rectangle analysis exits
+    # without any error
+    - name: Run Rectangle Analysis
+      run: go run ./... --rectangle
+
+    # ensure that the exact rectangle statistics exit
+    # without any error
+    - name: Run Rectangle Statistics
+      run: go run ./... --rectangle-stats
